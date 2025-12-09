@@ -3,7 +3,11 @@
 const express = require('express');
 const router = express.Router();
 
-// POST /api/v1/payments/create-payment-intent - Create intent (Protected)
-// Configured in index.js
+/**
+ * @route   POST /api/v1/payments/create-payment-intent
+ * @desc    Create Stripe payment intent
+ * @access  Private (verifyToken)
+ */
+// Routes configured in index.js with paymentController methods
 
 module.exports = router;

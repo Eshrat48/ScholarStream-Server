@@ -3,7 +3,11 @@
 const express = require('express');
 const router = express.Router();
 
-// POST /api/v1/auth/jwt - Generate JWT token (Public)
-// Configured in index.js
+/**
+ * @route   POST /api/v1/auth/jwt
+ * @desc    Generate JWT token for user
+ * @access  Public
+ */
+// Endpoint configured in index.js with authController.generateToken
 
 module.exports = router;
