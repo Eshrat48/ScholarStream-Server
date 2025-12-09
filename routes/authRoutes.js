@@ -3,6 +3,7 @@
 const express = require('express');
 const router = express.Router();
 
-// This router will be configured in index.js after controllers are initialized
+// POST /api/v1/auth/jwt - Generate JWT token (Public)
+// Configured in index.js
 
 module.exports = router;
