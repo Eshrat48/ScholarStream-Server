@@ -138,13 +138,23 @@ async function run() {
     console.log('✅ MongoDB connection verified!');
     console.log('✅ All routes initialized successfully!');
 
-    app.listen(port, () => {
+    const server = app.listen(port, () => {
       console.log(`🚀 ScholarStream Server running on port ${port}`);
+    });
+
+    // Keep server alive
+    process.on('SIGTERM', () => {
+      console.log('SIGTERM received, closing server gracefully...');
+      server.close(() => {
+        console.log('Server closed');
+        client.close();
+        process.exit(0);
+      });
     });
 
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
-    app.listen(port, () => {
+    const server = app.listen(port, () => {
       console.log(`⚠️ Server started on port ${port} (MongoDB connection failed)`);
     });
   }
