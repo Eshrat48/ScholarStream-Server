@@ -26,6 +26,8 @@ const getAnalyticsController = require('./controllers/analyticsController');
 
 // Import Middleware
 const verifyToken = require('./middleware/verifyToken');
+const verifyAdmin = require('./middleware/verifyAdmin');
+const verifyModerator = require('./middleware/verifyModerator');
 
 // Middleware
 app.use(cors({
@@ -81,6 +83,10 @@ async function run() {
     const paymentController = getPaymentController();
     const analyticsController = getAnalyticsController(usersCollection, scholarshipsCollection, applicationsCollection);
 
+    // Initialize Role Middlewares
+    const adminOnly = verifyAdmin(usersCollection);
+    const moderatorOrAdmin = verifyModerator(usersCollection);
+
     // Auth Routes
     authRoutes.post('/jwt', authController.generateToken);
     app.use('/api/v1/auth', authRoutes);
@@ -88,9 +94,10 @@ async function run() {
     // User Routes
     userRoutes.post('/', userController.createUser);
     userRoutes.get('/:email', verifyToken, userController.getUserByEmail);
-    userRoutes.get('/', verifyToken, userController.getAllUsers);
-    userRoutes.patch('/:id/role', verifyToken, userController.updateUserRole);
-    userRoutes.delete('/:id', verifyToken, userController.deleteUser);
+    userRoutes.get('/', verifyToken, adminOnly, userController.getAllUsers);
+    userRoutes.patch('/:id/role', verifyToken, adminOnly, userController.updateUserRole);
+    userRoutes.patch('/:id', verifyToken, userController.updateUser);
+    userRoutes.delete('/:id', verifyToken, adminOnly, userController.deleteUser);
     app.use('/api/v1/users', userRoutes);
 
     // Scholarship Routes
@@ -98,17 +105,17 @@ async function run() {
     scholarshipRoutes.get('/category/:category', scholarshipController.getByCategory);
     scholarshipRoutes.get('/', scholarshipController.getAllScholarships);
     scholarshipRoutes.get('/:id', scholarshipController.getScholarshipById);
-    scholarshipRoutes.post('/', verifyToken, scholarshipController.addScholarship);
-    scholarshipRoutes.patch('/:id', verifyToken, scholarshipController.updateScholarship);
-    scholarshipRoutes.delete('/:id', verifyToken, scholarshipController.deleteScholarship);
+    scholarshipRoutes.post('/', verifyToken, adminOnly, scholarshipController.addScholarship);
+    scholarshipRoutes.patch('/:id', verifyToken, adminOnly, scholarshipController.updateScholarship);
+    scholarshipRoutes.delete('/:id', verifyToken, adminOnly, scholarshipController.deleteScholarship);
     app.use('/api/v1/scholarships', scholarshipRoutes);
 
     // Application Routes
     applicationRoutes.post('/', verifyToken, applicationController.createApplication);
     applicationRoutes.get('/user/:email', verifyToken, applicationController.getMyApplications);
-    applicationRoutes.get('/', verifyToken, applicationController.getAllApplications);
-    applicationRoutes.patch('/:id/status', verifyToken, applicationController.updateApplicationStatus);
-    applicationRoutes.patch('/:id/feedback', verifyToken, applicationController.addFeedback);
+    applicationRoutes.get('/', verifyToken, moderatorOrAdmin, applicationController.getAllApplications);
+    applicationRoutes.patch('/:id/status', verifyToken, moderatorOrAdmin, applicationController.updateApplicationStatus);
+    applicationRoutes.patch('/:id/feedback', verifyToken, moderatorOrAdmin, applicationController.addFeedback);
     applicationRoutes.patch('/:id/payment', verifyToken, applicationController.updatePaymentStatus);
     applicationRoutes.patch('/:id', verifyToken, applicationController.updateApplication);
     applicationRoutes.delete('/:id', verifyToken, applicationController.deleteApplication);
@@ -117,7 +124,7 @@ async function run() {
     // Review Routes
     reviewRoutes.get('/scholarship/:scholarshipId', reviewController.getReviewsByScholarship);
     reviewRoutes.get('/user/:email', verifyToken, reviewController.getMyReviews);
-    reviewRoutes.get('/', verifyToken, reviewController.getAllReviews);
+    reviewRoutes.get('/', verifyToken, moderatorOrAdmin, reviewController.getAllReviews);
     reviewRoutes.post('/', verifyToken, reviewController.addReview);
     reviewRoutes.patch('/:id', verifyToken, reviewController.updateReview);
     reviewRoutes.delete('/:id', verifyToken, reviewController.deleteReview);
@@ -128,9 +135,11 @@ async function run() {
     app.use('/api/v1/payments', paymentRoutes);
 
     // Analytics Routes
-    analyticsRoutes.get('/stats', verifyToken, analyticsController.getDashboardStats);
-    analyticsRoutes.get('/applications-by-university', verifyToken, analyticsController.getApplicationsByUniversity);
-    analyticsRoutes.get('/applications-by-category', verifyToken, analyticsController.getApplicationsByCategory);
+    analyticsRoutes.get('/stats', verifyToken, adminOnly, analyticsController.getDashboardStats);
+    analyticsRoutes.get('/applications-series', verifyToken, adminOnly, analyticsController.getApplicationsSeries);
+    analyticsRoutes.get('/top-scholarships', verifyToken, adminOnly, analyticsController.getTopScholarships);
+    analyticsRoutes.get('/applications-by-university', verifyToken, adminOnly, analyticsController.getApplicationsByUniversity);
+    analyticsRoutes.get('/applications-by-category', verifyToken, adminOnly, analyticsController.getApplicationsByCategory);
     app.use('/api/v1/analytics', analyticsRoutes);
 
     // Verify MongoDB connection
@@ -138,9 +147,23 @@ async function run() {
     console.log('✅ MongoDB connection verified!');
     console.log('✅ All routes initialized successfully!');
 
-    const server = app.listen(port, () => {
-      console.log(`🚀 ScholarStream Server running on port ${port}`);
-    });
+    let server;
+    const startServer = (startPort) => {
+      server = app.listen(startPort, () => {
+        console.log(`🚀 ScholarStream Server running on port ${startPort}`);
+      });
+      server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          const nextPort = (parseInt(startPort, 10) || 5000) + 1;
+          console.warn(`⚠️ Port ${startPort} in use, retrying on ${nextPort}...`);
+          startServer(nextPort);
+        } else {
+          console.error('❌ Server error:', err);
+          process.exit(1);
+        }
+      });
+    };
+    startServer(port);
 
     // Keep server alive
     process.on('SIGTERM', () => {
@@ -154,9 +177,23 @@ async function run() {
 
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
-    const server = app.listen(port, () => {
-      console.log(`⚠️ Server started on port ${port} (MongoDB connection failed)`);
-    });
+    let server;
+    const startServer = (startPort) => {
+      server = app.listen(startPort, () => {
+        console.log(`⚠️ Server started on port ${startPort} (MongoDB connection failed)`);
+      });
+      server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          const nextPort = (parseInt(startPort, 10) || 5000) + 1;
+          console.warn(`⚠️ Port ${startPort} in use, retrying on ${nextPort}...`);
+          startServer(nextPort);
+        } else {
+          console.error('❌ Server error:', err);
+          process.exit(1);
+        }
+      });
+    };
+    startServer(port);
   }
 }
 

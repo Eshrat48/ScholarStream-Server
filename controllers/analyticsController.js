@@ -88,11 +88,72 @@ const getAnalyticsController = (usersCollection, scholarshipsCollection, applica
       res.status(500).json({ success: false, message: 'Error fetching category stats', error: error.message });
     }
   };
+
+  /**
+   * @desc    Get Applications Series Data (time-based)
+   * @route   GET /api/v1/analytics/applications-series
+   * @access  Private - Admin
+   */
+  const getApplicationsSeries = async (req, res) => {
+    try {
+      // Return last 7 days of application counts
+      const series = await applicationsCollection.aggregate([
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$appliedDate' } },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: -1 } },
+        { $limit: 7 }
+      ]).toArray();
+      
+      const counts = series.reverse().map(s => s.count);
+      res.json(counts);
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Error fetching applications series', error: error.message });
+    }
+  };
+
+  /**
+   * @desc    Get Top Scholarships by Application Count
+   * @route   GET /api/v1/analytics/top-scholarships
+   * @access  Private - Admin
+   */
+  const getTopScholarships = async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit) || 6;
+      
+      const topScholarships = await applicationsCollection.aggregate([
+        {
+          $group: {
+            _id: '$scholarshipName',
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { count: -1 } },
+        { $limit: limit },
+        {
+          $project: {
+            _id: 0,
+            name: '$_id',
+            count: 1
+          }
+        }
+      ]).toArray();
+      
+      res.json(topScholarships);
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Error fetching top scholarships', error: error.message });
+    }
+  };
   
   return {
     getDashboardStats,
     getApplicationsByUniversity,
     getApplicationsByCategory,
+    getApplicationsSeries,
+    getTopScholarships,
   };
 };
 

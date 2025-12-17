@@ -1,0 +1,65 @@
+/**
+ * Script to upgrade a user to Admin role
+ * Usage: node scripts/createAdmin.js <user-email>
+ */
+
+require('dotenv').config();
+const { MongoClient } = require('mongodb');
+
+const upgradeToAdmin = async (email) => {
+  const client = new MongoClient(process.env.MONGODB_URI);
+
+  try {
+    await client.connect();
+    console.log('Connected to MongoDB');
+
+    const db = client.db('scholarStreamDB');
+    const usersCollection = db.collection('users');
+
+    // Find user
+    const user = await usersCollection.findOne({ email });
+    
+    if (!user) {
+      console.log(`❌ User not found with email: ${email}`);
+      console.log('Please register this user first, then run this script.');
+      return;
+    }
+
+    console.log(`\nFound user: ${user.name} (${user.email})`);
+    console.log(`Current role: ${user.role || 'Student'}`);
+
+    // Update to Admin
+    const result = await usersCollection.updateOne(
+      { email },
+      { $set: { role: 'Admin' } }
+    );
+
+    if (result.modifiedCount > 0) {
+      console.log(`\n✅ Successfully upgraded ${email} to Admin role!`);
+      console.log('\nYou can now log in with this account as an Admin.');
+      console.log('\nAdmin privileges:');
+      console.log('  - Manage all scholarships (add, edit, delete)');
+      console.log('  - Manage all users');
+      console.log('  - View all applications');
+      console.log('  - Manage reviews');
+    } else {
+      console.log(`ℹ️ User was already an Admin`);
+    }
+
+  } catch (error) {
+    console.error('Error:', error);
+  } finally {
+    await client.close();
+  }
+};
+
+// Get email from command line arguments
+const email = process.argv[2];
+
+if (!email) {
+  console.log('Usage: node scripts/createAdmin.js <user-email>');
+  console.log('Example: node scripts/createAdmin.js admin@example.com');
+  process.exit(1);
+}
+
+upgradeToAdmin(email);
