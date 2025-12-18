@@ -96,20 +96,76 @@ const getAnalyticsController = (usersCollection, scholarshipsCollection, applica
    */
   const getApplicationsSeries = async (req, res) => {
     try {
-      // Return last 7 days of application counts
-      const series = await applicationsCollection.aggregate([
-        {
+      const range = req.query.range || '7days';
+      const now = new Date();
+      let labels = [], format, groupStage, matchStage = {}, sortStage, limitStage, labelMap = {};
+      if (range === '30days') {
+        // Last 7 weeks (approx 30 days)
+        format = '%G-%V'; // ISO week format
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date(now);
+          d.setDate(now.getDate() - i * 7);
+          const week = d.toLocaleDateString('en-CA', { year: 'numeric' }) + '-W' + (('0' + (getWeekNumber(d))).slice(-2));
+          labels.push(week);
+        }
+        groupStage = {
           $group: {
-            _id: { $dateToString: { format: '%Y-%m-%d', date: '$appliedDate' } },
+            _id: { $dateToString: { format, date: '$appliedDate' } },
             count: { $sum: 1 }
           }
-        },
-        { $sort: { _id: -1 } },
-        { $limit: 7 }
-      ]).toArray();
-      
-      const counts = series.reverse().map(s => s.count);
+        };
+        sortStage = { $sort: { _id: 1 } };
+        limitStage = null;
+      } else if (range === '3months') {
+        // Last 6 months
+        format = '%Y-%m';
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          labels.push(d.toISOString().slice(0, 7));
+        }
+        groupStage = {
+          $group: {
+            _id: { $dateToString: { format, date: '$appliedDate' } },
+            count: { $sum: 1 }
+          }
+        };
+        sortStage = { $sort: { _id: 1 } };
+        limitStage = null;
+      } else {
+        // Last 7 days
+        format = '%Y-%m-%d';
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date(now);
+          d.setDate(now.getDate() - i);
+          labels.push(d.toISOString().slice(0, 10));
+        }
+        groupStage = {
+          $group: {
+            _id: { $dateToString: { format, date: '$appliedDate' } },
+            count: { $sum: 1 }
+          }
+        };
+        sortStage = { $sort: { _id: 1 } };
+        limitStage = null;
+      }
+      const pipeline = [groupStage, sortStage].filter(Boolean);
+      const series = await applicationsCollection.aggregate(pipeline).toArray();
+      // Map results to label:count
+      for (const s of series) {
+        labelMap[s._id] = s.count;
+      }
+      // Fill missing with 0
+      const counts = labels.map(l => labelMap[l] || 0);
       res.json(counts);
+
+      // Helper for ISO week number
+      function getWeekNumber(d) {
+        d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+        const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+        return weekNo;
+      }
     } catch (error) {
       res.status(500).json({ success: false, message: 'Error fetching applications series', error: error.message });
     }
