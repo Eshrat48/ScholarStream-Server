@@ -34,6 +34,8 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'http://localhost:5174',
+    'https://scholar-stream-client-five.vercel.app',
+    'https://scholar-stream-client-fuj0c5slp-eshrat-kamals-projects.vercel.app',
     process.env.CLIENT_URL
   ],
   credentials: true
